@@ -1199,6 +1199,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  LEAVE_SYM
 %token  LEFT                          /* SQL-2003-R */
 %token  LEFT_PAREN_ALT                /* INTERNAL */
+%token  LEFT_PAREN_WITH               /* INTERNAL */
 %token  LESS_SYM
 %token  LEVEL_SYM
 %token  LEX_HOSTNAME
@@ -4986,14 +4987,11 @@ create_like:
 opt_create_select:
           /* empty */ { }
         | opt_duplicate opt_as create_select_query_expression
-/*
-        | opt_duplicate opt_as create_select_query_expression
-*/
         ;
-
+ 
 create_select_query_expression:
-        query_expression
-        {
+          query_expression
+          {
             SELECT_LEX *first_select= $1->first_select();
 
             Lex->insert_select_hack(first_select);
@@ -5008,7 +5006,27 @@ create_select_query_expression:
               else
                 Lex->sql_command= SQLCOM_REPLACE_SELECT;
             }
-        }
+          }
+        | LEFT_PAREN_WITH with_clause query_expression_body ')'
+          {
+            SELECT_LEX *first_select= $3->first_select();
+            $3->set_with_clause($2);
+            $2->attach_to(first_select);
+
+            Lex->insert_select_hack(first_select);
+            if (Lex->check_main_unit_semantics())
+              MYSQL_YYABORT;
+
+            if (Lex->sql_command == SQLCOM_INSERT ||
+                Lex->sql_command == SQLCOM_REPLACE)
+            {
+              if (Lex->sql_command == SQLCOM_INSERT)
+                Lex->sql_command= SQLCOM_INSERT_SELECT;
+              else
+                Lex->sql_command= SQLCOM_REPLACE_SELECT;
+            }
+          }
+        ;
 
 opt_create_partitioning:
           opt_partitioning
@@ -6114,11 +6132,6 @@ create_field_list:
           Lex->create_last_non_select_table= Lex->last_table();
         }
         ;
-
-opt_create_list_parens:
-          /* empty */ 
-        | create_field_list_parens
-        ; 
 
 create_field_list_parens:
         LEFT_PAREN_ALT field_list ')'
@@ -8921,7 +8934,10 @@ query_expression:
           query_expression_body
           {
             if ($1)
-             $2->set_with_clause($1);
+            {
+              $2->set_with_clause($1);
+              $1->attach_to($2->first_select());
+            }
             $$= $2;
           }
         ;
@@ -14394,13 +14410,17 @@ opt_with_clause:
 with_clause:
           WITH opt_recursive
           {
+             LEX *lex= Lex;
              With_clause *with_clause=
              new With_clause($2, Lex->curr_with_clause);
              if (with_clause == NULL)
                MYSQL_YYABORT;
-             Lex->derived_tables|= DERIVED_WITH;
-             Lex->curr_with_clause= with_clause;
+             lex->derived_tables|= DERIVED_WITH;
+             lex->curr_with_clause= with_clause;
              with_clause->add_to_list(Lex->with_clauses_list_last_next);
+             if (lex->current_select &&
+                 lex->current_select->parsing_place == BEFORE_OPT_FIELD_LIST)
+               lex->current_select->parsing_place= NO_MATTER;
           }
           with_list
           {

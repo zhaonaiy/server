@@ -1370,6 +1370,8 @@ int MYSQLlex(YYSTYPE *yylval, THD *thd)
     lip->yylval= NULL;
     lip->lookahead_token= token;
     thd->lex->current_select->parsing_place= NO_MATTER;
+    if (token == WITH)
+      return LEFT_PAREN_WITH;
     if (token != left_paren && token != SELECT_SYM)
       return LEFT_PAREN_ALT;
     else
@@ -7763,6 +7765,7 @@ void st_select_lex_unit::register_select_chain(SELECT_LEX *first_sel)
 {
   DBUG_ASSERT(first_sel != 0);
   slave= first_sel;
+  first_sel->prev= &slave;
   for(SELECT_LEX *sel=first_sel; sel; sel= sel->next_select())
   {
     sel->master= (st_select_lex_node *)this;

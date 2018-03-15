@@ -166,7 +166,6 @@ bool With_clause::check_dependencies()
   {
     if (with_elem->derived_dep_map & with_elem->get_elem_map())
       with_elem->is_recursive= true;
-    referenced_by_siblings|= with_elem->derived_dep_map;
   }   
 	
   dependencies_are_checked= true;
@@ -966,10 +965,6 @@ bool With_element::prepare_unreferenced(THD *thd)
 
   thd->lex->context_analysis_only&= ~CONTEXT_ANALYSIS_ONLY_DERIVED;
 
-  if (!is_referenced_by_siblings() &&
-       owner->owner->first_select()->first_execution)
-    owner->owner->first_select()->register_unit(spec, NULL);
-
   return rc;
 }
 
@@ -1063,8 +1058,6 @@ bool TABLE_LIST::set_as_with_table(THD *thd, With_element *with_elem)
   if (!with_elem->is_referenced() || with_elem->is_recursive)
   {
     derived= with_elem->spec;
-    if (select_lex->first_execution)
-      select_lex->register_unit(derived, NULL);
   }
   else 
   {

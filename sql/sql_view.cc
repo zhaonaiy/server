@@ -324,7 +324,9 @@ bool create_view_precheck(THD *thd, TABLE_LIST *tables, TABLE_LIST *view,
     }
   }
 
+#if 0
   if (lex->first_select_lex() != lex->all_selects_list)
+#endif
   {
     /* check tables of subqueries */
     for (tbl= tables; tbl; tbl= tbl->next_global)
