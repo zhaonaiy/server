@@ -1370,6 +1370,8 @@ int MYSQLlex(YYSTYPE *yylval, THD *thd)
     lip->yylval= NULL;
     lip->lookahead_token= token;
     thd->lex->current_select->parsing_place= NO_MATTER;
+    if (token == LIKE)
+      return LEFT_PAREN_LIKE; 
     if (token == WITH)
       return LEFT_PAREN_WITH;
     if (token != left_paren && token != SELECT_SYM)

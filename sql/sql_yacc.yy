@@ -885,7 +885,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
   Currently there are 98 shift/reduce conflicts.
   We should not introduce new conflicts any more.
 */
-%expect 97
+%expect 96
 
 /*
    Comments for TOKENS.
@@ -1200,6 +1200,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  LEFT                          /* SQL-2003-R */
 %token  LEFT_PAREN_ALT                /* INTERNAL */
 %token  LEFT_PAREN_WITH               /* INTERNAL */
+%token  LEFT_PAREN_LIKE               /* INTERNAL */
 %token  LESS_SYM
 %token  LEVEL_SYM
 %token  LEX_HOSTNAME
@@ -4981,7 +4982,7 @@ create_body:
 
 create_like:
           LIKE table_ident                      { $$= $2; }
-        | '(' LIKE table_ident ')'              { $$= $3; }
+        | LEFT_PAREN_LIKE LIKE table_ident ')'  { $$= $3; }
         ;
 
 opt_create_select:
