@@ -128,8 +128,6 @@ public:
   int compare_e_json_str();
   int compare_e_str_json();
 
-  Item** cache_converted_constant(THD *thd, Item **value, Item **cache,
-                                  const Type_handler *type);
   inline bool is_owner_equal_func()
   {
     return (owner->type() == Item::FUNC_ITEM &&
@@ -550,14 +548,13 @@ public:
       clone->cmp.comparators= 0;
     }
     return clone;
-  }      
-
+  }
 };
 
 /**
   XOR inherits from Item_bool_func because it is not optimized yet.
   Later, when XOR is optimized, it needs to inherit from
-  Item_cond instead. See WL#5800. 
+  Item_cond instead. See WL#5800.
 */
 class Item_func_xor :public Item_bool_func
 {
@@ -1195,7 +1192,7 @@ class Item_func_nullif :public Item_func_case_expression
     The left "a" is in a comparison and can be replaced by:
     - Item_func::convert_const_compared_to_int_field()
     - agg_item_set_converter() in set_cmp_func()
-    - Arg_comparator::cache_converted_constant() in set_cmp_func()
+    - cache_converted_constant() in set_cmp_func()
 
     Both "a"s are subject to equal fields propagation and can be replaced by:
     - Item_field::propagate_equal_fields(ANY_SUBST) for the left "a"
@@ -1395,20 +1392,14 @@ public:
 
 /*
   Class to represent a vector of constant DATE/DATETIME values.
-  Values are obtained with help of the get_datetime_value() function.
-  If the left item is a constant one then its value is cached in the
-  lval_cache variable.
 */
 class in_temporal :public in_longlong
 {
 protected:
   uchar *get_value_internal(Item *item, enum_field_types f_type);
 public:
-  /* Cache for the left item. */
-  Item *lval_cache;
-
   in_temporal(THD *thd, uint elements)
-    :in_longlong(thd, elements), lval_cache(0) {};
+    :in_longlong(thd, elements) {}
   Item *create_item(THD *thd);
   void value_to_item(uint pos, Item *item)
   {
@@ -1602,9 +1593,6 @@ public:
 
 /*
   Compare items in the DATETIME context.
-  Values are obtained with help of the get_datetime_value() function.
-  If the left item is a constant one then its value is cached in the
-  lval_cache variable.
 */
 class cmp_item_temporal: public cmp_item_scalar
 {
@@ -1612,11 +1600,6 @@ protected:
   longlong value;
   void store_value_internal(Item *item, enum_field_types type);
 public:
-  /* Cache for the left item. */
-  Item *lval_cache;
-
-  cmp_item_temporal()
-    :lval_cache(0) {}
   int compare(cmp_item *ci);
 };
 
@@ -2101,7 +2084,6 @@ class Item_func_case :public Item_func_case_expression
 protected:
   String tmp_value;
   DTCollation cmp_collation;
-  Item **arg_buffer;
   bool aggregate_then_and_else_arguments(THD *thd,
                                          Item **items, uint count,
                                          Item **else_expr);
@@ -2126,13 +2108,7 @@ public:
   enum precedence precedence() const { return BETWEEN_PRECEDENCE; }
   CHARSET_INFO *compare_collation() const { return cmp_collation.collation; }
   bool need_parentheses_in_default() { return true; }
-  Item *build_clone(THD *thd)
-  {
-    Item_func_case *clone= (Item_func_case *) Item_func::build_clone(thd);
-    if (clone)
-      clone->arg_buffer= 0;
-    return clone;
-  }
+  Item *build_clone(THD *thd) { return Item_func::build_clone(thd); }
 };
 
 
@@ -3404,10 +3380,6 @@ inline bool is_cond_or(Item *item)
 }
 
 Item *and_expressions(Item *a, Item *b, Item **org_item);
-
-longlong get_datetime_value(THD *thd, Item ***item_arg, Item **cache_arg,
-                            enum_field_types f_type, bool *is_null);
-
 
 class Comp_creator
 {

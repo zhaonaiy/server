@@ -27,6 +27,7 @@
 #include "sql_const.h"                 /* RAND_TABLE_BIT, MAX_FIELD_NAME */
 #include "field.h"                              /* Derivation */
 #include "sql_type.h"
+#include "sql_time.h"
 
 C_MODE_START
 #include <ma_dyncol.h>
@@ -1413,6 +1414,16 @@ public:
   bool get_date_from_string(MYSQL_TIME *ltime, ulonglong fuzzydate);
   bool get_time(MYSQL_TIME *ltime)
   { return get_date(ltime, Time::flags_for_get_date()); }
+  // Get date with automatic TIME->DATETIME conversion
+  bool convert_time_to_datetime(THD *thd, MYSQL_TIME *ltime, ulonglong fuzzydate)
+  {
+    MYSQL_TIME tmp;
+    if (time_to_datetime_with_warn(thd, ltime, &tmp, fuzzydate))
+      return null_value= true;
+    *ltime= tmp;
+    return false;
+  }
+  bool get_date_with_conversion(MYSQL_TIME *ltime, ulonglong fuzzydate);
   /*
     Get time with automatic DATE/DATETIME to TIME conversion,
     by subtracting CURRENT_DATE.
@@ -4365,7 +4376,7 @@ class Item_date_literal_for_invalid_dates: public Item_date_literal
 
     Item_date_literal_for_invalid_dates::get_date()
     (unlike the regular Item_date_literal::get_date())
-    does not check the result for NO_ZERO_IN_DATE and NO_ZER_DATE,
+    does not check the result for NO_ZERO_IN_DATE and NO_ZERO_DATE,
     always returns success (false), and does not produce error/warning messages.
 
     We need these _for_invalid_dates classes to be able to rewrite:
@@ -6014,7 +6025,7 @@ public:
   virtual Item *get_item() { return example; }
   virtual bool cache_value()= 0;
   bool basic_const_item() const
-  { return MY_TEST(example && example->basic_const_item()); }
+  { return example && example->basic_const_item(); }
   virtual void clear() { null_value= TRUE; value_cached= FALSE; }
   bool is_null() { return !has_value(); }
   virtual bool is_expensive()

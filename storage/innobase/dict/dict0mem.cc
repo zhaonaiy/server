@@ -33,6 +33,7 @@ Created 1/8/1996 Heikki Tuuri
 #include "data0type.h"
 #include "mach0data.h"
 #include "dict0dict.h"
+#include "row0row.h"
 #include "fts0priv.h"
 #include "ut0crc32.h"
 #include "lock0lock.h"

@@ -4383,17 +4383,12 @@ row_search_mvcc(
 	naturally moves upward (in fetch next) in alphabetical order,
 	otherwise downward */
 
-	if (direction == 0) {
-
-		if (mode == PAGE_CUR_GE
-		    || mode == PAGE_CUR_G
+	if (UNIV_UNLIKELY(direction == 0)) {
+		if (mode == PAGE_CUR_GE || mode == PAGE_CUR_G
 		    || mode >= PAGE_CUR_CONTAIN) {
-
 			moves_up = TRUE;
 		}
-
 	} else if (direction == ROW_SEL_NEXT) {
-
 		moves_up = TRUE;
 	}
 
@@ -4970,8 +4965,7 @@ no_gap_lock:
 			a deadlock and the transaction had to wait then
 			release the lock it is waiting on. */
 
-			trx->abort_type = TRX_SERVER_ABORT;
-			err = lock_trx_handle_wait(trx, false, false);
+			err = lock_trx_handle_wait(trx);
 
 			switch (err) {
 			case DB_SUCCESS:
@@ -5651,15 +5645,6 @@ normal_return:
 	}
 
 	mtr.commit();
-
-	/* Rollback blocking transactions from hit list for high priority
-	transaction, if any. We should not be holding latches here as
-	we are going to rollback the blocking transactions. */
-	if (!trx->hit_list.empty()) {
-
-		ut_ad(trx_is_high_priority(trx));
-		trx_kill_blocking(trx);
-	}
 
 	DEBUG_SYNC_C("row_search_for_mysql_before_return");
 

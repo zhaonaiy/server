@@ -120,11 +120,52 @@ longlong Item::val_datetime_packed_result()
   MYSQL_TIME ltime, tmp;
   if (get_date_result(&ltime, TIME_FUZZY_DATES | TIME_INVALID_DATES))
     return 0;
+<<<<<<< HEAD
   if (ltime.time_type != MYSQL_TIMESTAMP_TIME)
     return pack_time(&ltime);
   if ((null_value= time_to_datetime_with_warn(current_thd, &ltime, &tmp, 0)))
     return 0;
   return pack_time(&tmp);
+=======
+  }
+  case REAL_RESULT:
+  case STRING_RESULT:
+    return val_real() != 0.0;
+  case ROW_RESULT:
+  case TIME_RESULT:
+    DBUG_ASSERT(0);
+    return 0;                                   // Wrong (but safe)
+  }
+  return 0;                                   // Wrong (but safe)
+}
+
+
+/**
+  Get date/time/datetime.
+  Optionally extend TIME result to DATETIME.
+*/
+bool Item::get_date_with_conversion(MYSQL_TIME *ltime, ulonglong fuzzydate)
+{
+  THD *thd= current_thd;
+
+  /*
+    Some TIME type items return error when trying to do get_date()
+    without TIME_TIME_ONLY set (e.g. Item_field for Field_time).
+    In the SQL standard time->datetime conversion mode we add TIME_TIME_ONLY.
+    In the legacy time->datetime conversion mode we do not add TIME_TIME_ONLY
+    and leave it to get_date() to check date.
+  */
+  ulonglong time_flag= (field_type() == MYSQL_TYPE_TIME &&
+           !(thd->variables.old_behavior & OLD_MODE_ZERO_DATE_TIME_CAST)) ?
+           TIME_TIME_ONLY : 0;
+  if (get_date(ltime, fuzzydate | time_flag))
+    return true;
+  if (ltime->time_type == MYSQL_TIMESTAMP_TIME &&
+      !(fuzzydate & TIME_TIME_ONLY) &&
+      convert_time_to_datetime(thd, ltime, fuzzydate))
+    return true;
+  return false;
+>>>>>>> origin/10.2
 }
 
 
@@ -9712,8 +9753,96 @@ void resolve_const_item(THD *thd, Item **ref, Item *comp_item)
   Item *item= *ref;
   if (item->basic_const_item())
     return;                                     // Can't be better
+<<<<<<< HEAD
   Type_handler_hybrid_field_type cmp(comp_item->type_handler_for_comparison());
   if (!cmp.aggregate_for_comparison(item->type_handler_for_comparison()))
+=======
+
+  Item *new_item= NULL;
+  Item_result res_type= item_cmp_type(comp_item, item);
+  char *name= item->name;                       // Alloced on THD::mem_root
+  MEM_ROOT *mem_root= thd->mem_root;
+
+  switch (res_type) {
+  case TIME_RESULT:
+  {
+    enum_field_types type= item->field_type_for_temporal_comparison(comp_item);
+    longlong value= item->val_temporal_packed(type);
+    if (item->null_value)
+      new_item= new (mem_root) Item_null(thd, name);
+    else
+    {
+      Item_cache_temporal *cache= new (mem_root) Item_cache_temporal(thd, type);
+      cache->store_packed(value, item);
+      new_item= cache;
+    }
+    break;
+  }
+  case STRING_RESULT:
+  {
+    char buff[MAX_FIELD_WIDTH];
+    String tmp(buff,sizeof(buff),&my_charset_bin),*result;
+    result=item->val_str(&tmp);
+    if (item->null_value)
+      new_item= new (mem_root) Item_null(thd, name);
+    else
+    {
+      uint length= result->length();
+      char *tmp_str= thd->strmake(result->ptr(), length);
+      new_item= new (mem_root) Item_string(thd, name, tmp_str, length, result->charset());
+    }
+    break;
+  }
+  case INT_RESULT:
+  {
+    longlong result=item->val_int();
+    uint length=item->max_length;
+    bool null_value=item->null_value;
+    new_item= (null_value ? (Item*) new (mem_root) Item_null(thd, name) :
+               (Item*) new (mem_root) Item_int(thd, name, result, length));
+    break;
+  }
+  case ROW_RESULT:
+  if (item->type() == Item::ROW_ITEM && comp_item->type() == Item::ROW_ITEM)
+  {
+    /*
+      Substitute constants only in Item_row's. Don't affect other Items
+      with ROW_RESULT (eg Item_singlerow_subselect).
+
+      For such Items more optimal is to detect if it is constant and replace
+      it with Item_row. This would optimize queries like this:
+      SELECT * FROM t1 WHERE (a,b) = (SELECT a,b FROM t2 LIMIT 1);
+    */
+    Item_row *item_row= (Item_row*) item;
+    Item_row *comp_item_row= (Item_row*) comp_item;
+    uint col;
+    new_item= 0;
+    /*
+      If item and comp_item are both Item_row's and have same number of cols
+      then process items in Item_row one by one.
+      We can't ignore NULL values here as this item may be used with <=>, in
+      which case NULL's are significant.
+    */
+    DBUG_ASSERT(item->result_type() == comp_item->result_type());
+    DBUG_ASSERT(item_row->cols() == comp_item_row->cols());
+    col= item_row->cols();
+    while (col-- > 0)
+      resolve_const_item(thd, item_row->addr(col),
+                         comp_item_row->element_index(col));
+    break;
+  }
+  /* Fallthrough */
+  case REAL_RESULT:
+  {						// It must REAL_RESULT
+    double result= item->val_real();
+    uint length=item->max_length,decimals=item->decimals;
+    bool null_value=item->null_value;
+    new_item= (null_value ? (Item*) new (mem_root) Item_null(thd, name) : (Item*)
+               new (mem_root) Item_float(thd, name, result, decimals, length));
+    break;
+  }
+  case DECIMAL_RESULT:
+>>>>>>> origin/10.2
   {
     Item *new_item= cmp.type_handler()->
                      make_const_item_for_comparison(thd, item, comp_item);
@@ -9816,6 +9945,38 @@ int stored_field_cmp_to_item(THD *thd, Field *field, Item *item)
   return 0;
 }
 
+<<<<<<< HEAD
+=======
+/**
+  Get a cache item of given type.
+
+  @param item         value to be cached
+  @param type         required type of cache
+
+  @return cache item
+*/
+
+Item_cache* Item_cache::get_cache(THD *thd, const Item *item,
+                         const Item_result type, const enum_field_types f_type)
+{
+  MEM_ROOT *mem_root= thd->mem_root;
+  switch (type) {
+  case INT_RESULT:
+    return new (mem_root) Item_cache_int(thd, f_type);
+  case REAL_RESULT:
+    return new (mem_root) Item_cache_real(thd);
+  case DECIMAL_RESULT:
+    return new (mem_root) Item_cache_decimal(thd);
+  case STRING_RESULT:
+    return new (mem_root) Item_cache_str(thd, item);
+  case ROW_RESULT:
+    return new (mem_root) Item_cache_row(thd);
+  case TIME_RESULT:
+    return new (mem_root) Item_cache_temporal(thd, f_type);
+  }
+  return 0;                                     // Impossible
+}
+>>>>>>> origin/10.2
 
 void Item_cache::store(Item *item)
 {
@@ -9944,8 +10105,7 @@ Item_cache_temporal::Item_cache_temporal(THD *thd, const Type_handler *handler)
 longlong Item_cache_temporal::val_datetime_packed()
 {
   DBUG_ASSERT(fixed == 1);
-  if (Item_cache_temporal::field_type() == MYSQL_TYPE_TIME)
-    return Item::val_datetime_packed(); // TIME-to-DATETIME conversion needed
+  DBUG_ASSERT(Item_cache_temporal::field_type() != MYSQL_TYPE_TIME);
   if ((!value_cached && !cache_value()) || null_value)
   {
     null_value= TRUE;
@@ -9958,8 +10118,7 @@ longlong Item_cache_temporal::val_datetime_packed()
 longlong Item_cache_temporal::val_time_packed()
 {
   DBUG_ASSERT(fixed == 1);
-  if (Item_cache_temporal::field_type() != MYSQL_TYPE_TIME)
-    return Item::val_time_packed(); // DATETIME-to-TIME conversion needed
+  DBUG_ASSERT(Item_cache_temporal::field_type() == MYSQL_TYPE_TIME);
   if ((!value_cached && !cache_value()) || null_value)
   {
     null_value= TRUE;
@@ -10017,10 +10176,11 @@ double Item_cache_temporal::val_real()
 }
 
 
-bool  Item_cache_temporal::cache_value()
+bool Item_cache_temporal::cache_value()
 {
   if (!example)
     return false;
+<<<<<<< HEAD
   value_cached= true;
   value= example->val_datetime_packed_result();
   null_value= example->null_value;
@@ -10034,6 +10194,24 @@ bool Item_cache_time::cache_value()
     return false;
   value_cached= true;
   value= example->val_time_packed_result();
+=======
+  value_cached= true;
+
+  MYSQL_TIME ltime;
+  uint fuzzydate= TIME_FUZZY_DATES | TIME_INVALID_DATES;
+  if (Item_cache_temporal::field_type() == MYSQL_TYPE_TIME)
+    fuzzydate|= TIME_TIME_ONLY;
+
+  value= 0;
+  if (!example->get_date_result(&ltime, fuzzydate))
+  {
+    if (ltime.time_type == MYSQL_TIMESTAMP_TIME &&
+        !(fuzzydate & TIME_TIME_ONLY) &&
+        convert_time_to_datetime(current_thd, &ltime, fuzzydate))
+      return true;
+    value= pack_time(&ltime);
+  }
+>>>>>>> origin/10.2
   null_value= example->null_value;
   return true;
 }
@@ -10046,12 +10224,26 @@ bool Item_cache_temporal::get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
   if (!has_value())
   {
     bzero((char*) ltime,sizeof(*ltime));
-    return 1;
+    return null_value= true;
   }
 
+<<<<<<< HEAD
   unpack_time(value, ltime, mysql_timestamp_type());
+=======
+  unpack_time(value, ltime);
+  ltime->time_type= mysql_type_to_time_type(field_type());
+  if (ltime->time_type == MYSQL_TIMESTAMP_TIME)
+  {
+    if (fuzzydate & TIME_TIME_ONLY)
+    {
+      ltime->hour+= (ltime->month*32+ltime->day)*24;
+      ltime->month= ltime->day= 0;
+    }
+    else if (convert_time_to_datetime(current_thd, ltime, fuzzydate))
+      return true;
+  }
+>>>>>>> origin/10.2
   return 0;
- 
 }
 
 
@@ -10094,9 +10286,24 @@ Item *Item_cache_temporal::convert_to_basic_const_item(THD *thd)
   else
   {
     MYSQL_TIME ltime;
+<<<<<<< HEAD
     unpack_time(val_datetime_packed(), &ltime, MYSQL_TIMESTAMP_DATETIME);
     new_item= (Item*) new (thd->mem_root) Item_datetime_literal(thd, &ltime,
                                                                 decimals);
+=======
+    if (Item_cache_temporal::field_type() == MYSQL_TYPE_TIME)
+    {
+      unpack_time(val_time_packed(), &ltime);
+      new_item= (Item*) new (thd->mem_root) Item_time_literal(thd, &ltime,
+                                                              decimals);
+    }
+    else
+    {
+      unpack_time(val_datetime_packed(), &ltime);
+      new_item= (Item*) new (thd->mem_root) Item_datetime_literal(thd, &ltime,
+                                                                  decimals);
+    }
+>>>>>>> origin/10.2
   }
   return new_item;
 }
