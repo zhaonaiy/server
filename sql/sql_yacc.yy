@@ -11888,7 +11888,7 @@ opt_window_partition_clause:
 
 opt_window_order_clause:
           /* empty */ { }
-        | ORDER_SYM BY order_list
+        | ORDER_SYM BY order_list { Select->order_list= *($3); } 
         ;
 
 opt_window_frame_clause:

@@ -667,7 +667,7 @@ create table t1 (a int);
 create table t1 select * from t1;
 ERROR 42S01: Table 't1' already exists
 create table t2 union = (t1) select * from t1;
-ERROR HY000: 'test.t2' is not of type 'BASE TABLE'
+ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 't1) select * from t1' at line 1
 flush tables with read lock;
 unlock tables;
 drop table t1;

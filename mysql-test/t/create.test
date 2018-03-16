@@ -537,7 +537,7 @@ drop table t1,t2;
 create table t1 (a int);
 --error ER_TABLE_EXISTS_ERROR
 create table t1 select * from t1;
---error ER_WRONG_OBJECT
+--error ER_PARSE_ERROR
 create table t2 union = (t1) select * from t1;
 flush tables with read lock;
 unlock tables;
