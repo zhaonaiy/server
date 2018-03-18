@@ -2338,7 +2338,8 @@ int check_binlog_magic(IO_CACHE* log, const char** errmsg)
 }
 
 
-File open_binlog(IO_CACHE *log, const char *log_file_name, const char **errmsg)
+File open_binlog(IO_CACHE *log, const char *log_file_name, const char **errmsg,
+                 myf extra_flags)
 {
   File file;
   DBUG_ENTER("open_binlog");
@@ -2362,6 +2363,8 @@ File open_binlog(IO_CACHE *log, const char *log_file_name, const char **errmsg)
   }
   if (check_binlog_magic(log,errmsg))
     goto err;
+  log->myflags= log->myflags | extra_flags;
+
   DBUG_RETURN(file);
 
 err:
@@ -7856,6 +7859,8 @@ MYSQL_BIN_LOG::trx_group_commit_leader(group_commit_entry *leader)
     {
       bool any_error= false;
       bool all_error= true;
+
+      DEBUG_SYNC(leader->thd, "at_after_write_to_binlog");
 
       mysql_mutex_assert_not_owner(&LOCK_prepare_ordered);
       mysql_mutex_assert_owner(&LOCK_log);

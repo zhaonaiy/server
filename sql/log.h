@@ -1092,7 +1092,7 @@ void sql_perror(const char *message);
 bool flush_error_log();
 
 File open_binlog(IO_CACHE *log, const char *log_file_name,
-                 const char **errmsg);
+                 const char **errmsg, myf extra_flags= 0);
 
 void make_default_log_name(char **out, const char* log_ext, bool once);
 void binlog_reset_cache(THD *thd);
