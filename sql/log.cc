@@ -2338,8 +2338,7 @@ int check_binlog_magic(IO_CACHE* log, const char** errmsg)
 }
 
 
-File open_binlog(IO_CACHE *log, const char *log_file_name, const char **errmsg,
-                 myf extra_flags)
+File open_binlog(IO_CACHE *log, const char *log_file_name, const char **errmsg)
 {
   File file;
   DBUG_ENTER("open_binlog");
@@ -2363,8 +2362,6 @@ File open_binlog(IO_CACHE *log, const char *log_file_name, const char **errmsg,
   }
   if (check_binlog_magic(log,errmsg))
     goto err;
-  log->myflags= log->myflags | extra_flags;
-
   DBUG_RETURN(file);
 
 err:

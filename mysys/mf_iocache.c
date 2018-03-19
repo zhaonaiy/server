@@ -651,9 +651,9 @@ int _my_b_cache_read(IO_CACHE *info, uchar *Buffer, size_t Count)
   max_length= info->read_length-diff_length;
   /* We will not read past end of file. */
   if (info->type != READ_FIFO &&
-      max_length > ((info->myflags & MY_READ_LIMIT ? info->end_of_read :
+      max_length > ((info->end_of_read > 0 ? info->end_of_read :
                      info->end_of_file) - pos_in_file))
-       max_length= (size_t) ((info->myflags & MY_READ_LIMIT ? info->end_of_read :
+       max_length= (size_t) ((info->end_of_read > 0 ? info->end_of_read :
                               info->end_of_file) - pos_in_file);
   /*
     If there is nothing left to read,

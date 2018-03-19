@@ -82,7 +82,6 @@ typedef struct my_aio_result {
 #define MY_SHORT_WAIT	64	/* my_lock() don't wait if can't lock */
 #define MY_FORCE_LOCK   128     /* use my_lock() even if disable_locking */
 #define MY_NO_WAIT      256	/* my_lock() don't wait at all */
-#define MY_READ_LIMIT   1024	/* read into buffer is constrained by a limit */
 /*
   init_dynamic_array() has init buffer; Internal flag, not to be used by
   caller.
@@ -496,7 +495,15 @@ typedef struct st_io_cache		/* Used when cacheing files */
   my_off_t aio_read_pos;
   my_aio_result aio_result;
 #endif
-  /* "logical" end of file offset for MY_READ_LIMIT (read) cache */
+  /*
+    end-of-file-to-read offset for read caches that indend to access
+    associated files lock-free and concurrently despite possible
+    writers. The cache buffer must not contain (been read into) bytes
+    over this margin.
+    The zero value of the member designates the cache is ordinary.
+    Non-zero value affects decision of how many bytes to pump
+    into the cache buffer.
+  */
   my_off_t end_of_read;
 } IO_CACHE;
 

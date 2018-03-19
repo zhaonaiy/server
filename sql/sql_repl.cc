@@ -2531,8 +2531,6 @@ static my_off_t get_binlog_end_pos(binlog_send_info *info,
 
 static my_off_t my_b_set_read_limit(IO_CACHE *log, my_off_t end_pos)
 {
-
-  DBUG_ASSERT(log->myflags & MY_READ_LIMIT);
   DBUG_ASSERT(log->end_of_read < end_pos);
 
   return (log->end_of_read= end_pos);
@@ -2598,7 +2596,7 @@ static int send_events(binlog_send_info *info, IO_CACHE* log, LOG_INFO* linfo,
                                   <= end_pos);
                     }
                     );
-#endif    
+#endif
     if (error)
     {
       set_read_error(info, error);
@@ -2816,8 +2814,7 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
       goto err;
     }
 
-    if ((file=open_binlog(&log, linfo.log_file_name, &info->errmsg,
-                          MY_READ_LIMIT)) < 0)
+    if ((file=open_binlog(&log, linfo.log_file_name, &info->errmsg)) < 0)
     {
       info->error= ER_MASTER_FATAL_ERROR_READING_BINLOG;
       goto err;
