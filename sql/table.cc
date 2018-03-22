@@ -7113,6 +7113,9 @@ bool TABLE::add_tmp_key(uint key, uint key_parts,
   if (!keyinfo->rec_per_key)
     return TRUE;
   bzero(keyinfo->rec_per_key, sizeof(ulong)*key_parts);
+  st_select_lex* lex= pos_in_table_list ? pos_in_table_list->derived->first_select(): NULL;
+  if (lex && (lex->options & SELECT_DISTINCT))
+    keyinfo->rec_per_key[key_parts-1]=1;
   keyinfo->read_stats= NULL;
   keyinfo->collected_stats= NULL;
 

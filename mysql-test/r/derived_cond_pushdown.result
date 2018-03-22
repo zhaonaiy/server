@@ -12333,7 +12333,7 @@ EXPLAIN
       "key_length": "5",
       "used_key_parts": ["b"],
       "ref": ["test.t1.a"],
-      "rows": 2,
+      "rows": 1,
       "filtered": 100,
       "materialized": {
         "query_block": {
