@@ -4661,9 +4661,16 @@ fsp_flags_try_adjust(ulint space_id, ulint flags)
 {
 	ut_ad(!srv_read_only_mode);
 	ut_ad(fsp_flags_is_valid(flags, space_id));
-	if (!fil_space_get_size(space_id)) {
+	mutex_enter(&fil_system->mutex);
+	fil_space_t* space = fil_space_get_space(space_id);
+	if (!space || !space->size) {
+		mutex_exit(&fil_system->mutex);
 		return;
 	}
+	/* This code is executed during server startup while no
+	connections are allowed. We do not need to protect against
+	DROP TABLE by fil_space_acquire(). */
+	mutex_exit(&fil_system->mutex);
 	mtr_t	mtr;
 	mtr.start();
 	if (buf_block_t* b = buf_page_get(
@@ -4673,13 +4680,13 @@ fsp_flags_try_adjust(ulint space_id, ulint flags)
 		/* Suppress the message if only the DATA_DIR flag to differs. */
 		if ((f ^ flags) & ~(1U << FSP_FLAGS_POS_RESERVED)) {
 			ib::warn()
-				<< "adjusting FSP_SPACE_FLAGS of tablespace "
-				<< space_id
-				<< " from " << ib::hex(f)
+				<< "adjusting FSP_SPACE_FLAGS of file '"
+				<< UT_LIST_GET_FIRST(space->chain)->name
+				<< "' from " << ib::hex(f)
 				<< " to " << ib::hex(flags);
 		}
 		if (f != flags) {
-			mtr.set_named_space(space_id);
+			mtr.set_named_space(space);
 			mlog_write_ulint(FSP_HEADER_OFFSET
 					 + FSP_SPACE_FLAGS + b->frame,
 					 flags, MLOG_4BYTES, &mtr);
