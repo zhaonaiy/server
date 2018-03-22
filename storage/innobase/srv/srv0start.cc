@@ -1040,17 +1040,13 @@ srv_undo_tablespaces_init(bool create_new_db)
 	if (create_new_db) {
 		mtr_t	mtr;
 
-		mtr_start(&mtr);
-
-		/* The undo log tablespace */
 		for (i = 0; i < n_undo_tablespaces; ++i) {
-
+			mtr.start();
 			fsp_header_init(
-				undo_tablespace_ids[i],
+				mtr_x_lock_space(undo_tablespace_ids[i], &mtr),
 				SRV_UNDO_TABLESPACE_SIZE_IN_PAGES, &mtr);
+			mtr.commit();
 		}
-
-		mtr_commit(&mtr);
 	}
 
 	if (!undo::Truncate::s_fix_up_spaces.empty()) {
@@ -1078,10 +1074,9 @@ srv_undo_tablespaces_init(bool create_new_db)
 
 			undo::Truncate::add_space_to_trunc_list(*it);
 
-			fsp_header_init(
-				*it, SRV_UNDO_TABLESPACE_SIZE_IN_PAGES, &mtr);
-
-			mtr_x_lock(fil_space_get_latch(*it, NULL), &mtr);
+			fsp_header_init(mtr_x_lock_space(*it, &mtr),
+					SRV_UNDO_TABLESPACE_SIZE_IN_PAGES,
+					&mtr);
 
 			for (ulint i = 0; i < TRX_SYS_N_RSEGS; i++) {
 				if (trx_sysf_rseg_get_space(sys_header, i)
@@ -1191,30 +1186,21 @@ srv_open_tmp_tablespace(bool create_new_db)
 		ib::error() << "Unable to create the shared "
 			<< srv_tmp_space.name();
 
+	} else if (fil_space_open(srv_tmp_space.name())) {
+		/* Initialize the header page */
+		mtr_t mtr;
+		mtr.start();
+		mtr.set_log_mode(MTR_LOG_NO_REDO);
+		fsp_header_init(mtr_x_lock_space(SRV_TMP_SPACE_ID, &mtr),
+				srv_tmp_space.get_sum_of_sizes(),
+				&mtr);
+		mtr.commit();
 	} else {
-
-		mtr_t	mtr;
-		ulint	size = srv_tmp_space.get_sum_of_sizes();
-
-		/* Open this shared temp tablespace in the fil_system so that
-		it stays open until shutdown. */
-		if (fil_space_open(srv_tmp_space.name())) {
-
-			/* Initialize the header page */
-			mtr_start(&mtr);
-			mtr_set_log_mode(&mtr, MTR_LOG_NO_REDO);
-
-			fsp_header_init(SRV_TMP_SPACE_ID, size, &mtr);
-
-			mtr_commit(&mtr);
-		} else {
-			/* This file was just opened in the code above! */
-			ib::error() << "The " << srv_tmp_space.name()
-				<< " data file cannot be re-opened"
-				" after check_file_spec() succeeded!";
-
-			err = DB_ERROR;
-		}
+		/* This file was just opened in the code above! */
+		ib::error() << "The " << srv_tmp_space.name()
+			    << " data file cannot be re-opened"
+			" after check_file_spec() succeeded!";
+		err = DB_ERROR;
 	}
 
 	return(err);
@@ -2148,7 +2134,8 @@ files_checked:
 
 		mtr_start(&mtr);
 
-		fsp_header_init(0, sum_of_new_sizes, &mtr);
+		fsp_header_init(mtr_x_lock_space(0, &mtr), sum_of_new_sizes,
+				&mtr);
 
 		compile_time_assert(TRX_SYS_SPACE == 0);
 		compile_time_assert(IBUF_SPACE_ID == 0);

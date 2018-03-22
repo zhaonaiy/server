@@ -740,21 +740,18 @@ fsp_header_init_fields(
 }
 
 /** Initialize a tablespace header.
-@param[in]	space_id	space id
-@param[in]	size		current size in blocks
-@param[in,out]	mtr		mini-transaction */
-void
-fsp_header_init(ulint space_id, ulint size, mtr_t* mtr)
+@param[in,out]	space	tablespace
+@param[in]	size	current size in blocks
+@param[in,out]	mtr	mini-transaction */
+void fsp_header_init(fil_space_t* space, ulint size, mtr_t* mtr)
 {
 	fsp_header_t*	header;
 	buf_block_t*	block;
 	page_t*		page;
 
-	ut_ad(mtr);
+	ut_ad(mtr_memo_contains(mtr, &space->latch, MTR_MEMO_X_LOCK));
 
-	fil_space_t*		space	= mtr_x_lock_space(space_id, mtr);
-
-	const page_id_t		page_id(space_id, 0);
+	const page_id_t		page_id(space->id, 0);
 	const page_size_t	page_size(space->flags);
 
 	block = buf_page_create(page_id, page_size, mtr);
@@ -775,7 +772,7 @@ fsp_header_init(ulint space_id, ulint size, mtr_t* mtr)
 
 	header = FSP_HEADER_OFFSET + page;
 
-	mlog_write_ulint(header + FSP_SPACE_ID, space_id, MLOG_4BYTES, mtr);
+	mlog_write_ulint(header + FSP_SPACE_ID, space->id, MLOG_4BYTES, mtr);
 	mlog_write_ulint(header + FSP_NOT_USED, 0, MLOG_4BYTES, mtr);
 
 	mlog_write_ulint(header + FSP_SIZE, size, MLOG_4BYTES, mtr);
@@ -793,7 +790,7 @@ fsp_header_init(ulint space_id, ulint size, mtr_t* mtr)
 
 	mlog_write_ull(header + FSP_SEG_ID, 1, mtr);
 
-	fsp_fill_free_list(!is_system_tablespace(space_id),
+	fsp_fill_free_list(!is_system_tablespace(space->id),
 			   space, header, mtr);
 
 	/* Write encryption metadata to page 0 if tablespace is

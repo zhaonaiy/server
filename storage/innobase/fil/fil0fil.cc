@@ -2502,15 +2502,14 @@ fil_recreate_tablespace(
 		return(DB_ERROR);
 	}
 
-	bool			found;
-	const page_size_t&	page_size =
-		fil_space_get_page_size(space_id, &found);
-
-	if (!found) {
+	fil_space_t* space = fil_space_acquire(space_id);
+	if (!space) {
 		ib::info() << "Missing .ibd file for table '" << name
 			<< "' with tablespace " << space_id;
 		return(DB_ERROR);
 	}
+
+	const page_size_t page_size(space->flags);
 
 	/* Step-3: Initialize Header. */
 	if (page_size.is_compressed()) {
@@ -2548,7 +2547,7 @@ fil_recreate_tablespace(
 			ib::info() << "Failed to clean header of the"
 				" table '" << name << "' with tablespace "
 				<< space_id;
-			return(err);
+			goto func_exit;
 		}
 	}
 
@@ -2560,7 +2559,8 @@ fil_recreate_tablespace(
 
 	/* Initialize the first extent descriptor page and
 	the second bitmap page for the new tablespace. */
-	fsp_header_init(space_id, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
+	mtr_x_lock(&space->latch, &mtr);
+	fsp_header_init(space, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
 	mtr_commit(&mtr);
 
 	/* Step-4: Re-Create Indexes to newly re-created tablespace.
@@ -2569,7 +2569,7 @@ fil_recreate_tablespace(
 	err = truncate.create_indexes(
 		name, space_id, page_size, flags, format_flags);
 	if (err != DB_SUCCESS) {
-		return(err);
+		goto func_exit;
 	}
 
 	/* Step-5: Write new created pages into ibd file handle and
@@ -2579,15 +2579,8 @@ fil_recreate_tablespace(
 
 	mtr_set_log_mode(&mtr, MTR_LOG_NO_REDO);
 
-	mutex_enter(&fil_system->mutex);
-
-	fil_space_t*	space = fil_space_get_by_id(space_id);
-
-	mutex_exit(&fil_system->mutex);
-
-	fil_node_t*	node = UT_LIST_GET_FIRST(space->chain);
-
-	for (ulint page_no = 0; page_no < node->size; ++page_no) {
+	for (ulint page_no = 0;
+	     page_no < UT_LIST_GET_FIRST(space->chain)->size; ++page_no) {
 
 		const page_id_t	cur_page_id(space_id, page_no);
 
@@ -2644,7 +2637,8 @@ fil_recreate_tablespace(
 	mtr_commit(&mtr);
 
 	truncate_t::s_fix_up_active = false;
-
+func_exit:
+	fil_space_release(space);
 	return(err);
 }
 
@@ -3251,27 +3245,28 @@ fil_reinit_space_header_for_table(
 	ibuf_delete_for_discarded_space(id);
 
 	mutex_enter(&fil_system->mutex);
+	fil_space_t* space = fil_space_get_by_id(id);
+	/* TRUNCATE TABLE is protected by an exclusive table lock.
+	The table cannot be dropped or the tablespace discarded
+	while we are holding the transactional table lock. Thus,
+	there is no need to invoke fil_space_acquire(). */
+	mutex_exit(&fil_system->mutex);
 
-	fil_space_t*	space = fil_space_get_by_id(id);
+	mtr_t	mtr;
+
+	mtr.start();
+	mtr.set_named_space(space);
+	mtr_x_lock(&space->latch, &mtr);
 
 	/* The following code must change when InnoDB supports
 	multiple datafiles per tablespace. */
 	ut_a(UT_LIST_GET_LEN(space->chain) == 1);
 
-	fil_node_t*	node = UT_LIST_GET_FIRST(space->chain);
+	space->size = UT_LIST_GET_FIRST(space->chain)->size = size;
 
-	space->size = node->size = size;
+	fsp_header_init(space, size, &mtr);
 
-	mutex_exit(&fil_system->mutex);
-
-	mtr_t	mtr;
-
-	mtr_start(&mtr);
-	mtr.set_named_space(id);
-
-	fsp_header_init(id, size, &mtr);
-
-	mtr_commit(&mtr);
+	mtr.commit();
 }
 
 #ifdef UNIV_DEBUG
@@ -3693,12 +3688,14 @@ func_exit:
 @param[in]	name		Tablespace name in dbname/tablename format.
 @param[in]	path		Path and filename of the datafile to create.
 @param[in]	flags		Tablespace flags
-@param[in]	size		Initial size of the tablespace file in
-                                pages, must be >= FIL_IBD_FILE_INITIAL_SIZE
+@param[in]	size		Initial size of the tablespace file in pages,
+must be >= FIL_IBD_FILE_INITIAL_SIZE
 @param[in]	mode		MariaDB encryption mode
 @param[in]	key_id		MariaDB encryption key_id
-@return DB_SUCCESS or error code */
-dberr_t
+@param[out]	err		DB_SUCCESS or error code
+@return	the created tablespace
+@retval	NULL	on error */
+fil_space_t*
 fil_ibd_create(
 	ulint		space_id,
 	const char*	name,
@@ -3706,10 +3703,10 @@ fil_ibd_create(
 	ulint		flags,
 	ulint		size,
 	fil_encryption_t mode,
-	uint32_t	key_id)
+	uint32_t	key_id,
+	dberr_t*	err)
 {
 	pfs_os_file_t	file;
-	dberr_t		err;
 	byte*		buf2;
 	byte*		page;
 	bool		success;
@@ -3725,9 +3722,9 @@ fil_ibd_create(
 
 	/* Create the subdirectories in the path, if they are
 	not there already. */
-	err = os_file_create_subdirs_if_needed(path);
-	if (err != DB_SUCCESS) {
-		return(err);
+	*err = os_file_create_subdirs_if_needed(path);
+	if (*err != DB_SUCCESS) {
+		return NULL;
 	}
 
 	file = os_file_create(
@@ -3740,26 +3737,24 @@ fil_ibd_create(
 
 	if (!success) {
 		/* The following call will print an error message */
-		ulint	error = os_file_get_last_error(true);
-
-		ib::error() << "Cannot create file '" << path << "'";
-
-		if (error == OS_FILE_ALREADY_EXISTS) {
+		switch (os_file_get_last_error(true)) {
+		case OS_FILE_ALREADY_EXISTS:
 			ib::info() << "The file '" << path << "'"
 				" already exists though the"
 				" corresponding table did not exist"
 				" in the InnoDB data dictionary."
 				" You can resolve the problem by removing"
 				" the file.";
-
-			return(DB_TABLESPACE_EXISTS);
+			*err = DB_TABLESPACE_EXISTS;
+			break;
+		case OS_FILE_DISK_FULL:
+			*err = DB_OUT_OF_FILE_SPACE;
+			break;
+		default:
+			*err = DB_ERROR;
 		}
-
-		if (error == OS_FILE_DISK_FULL) {
-			return(DB_OUT_OF_FILE_SPACE);
-		}
-
-		return(DB_ERROR);
+		ib::error() << "Cannot create file '" << path << "'";
+		return NULL;
 	}
 
 	const bool is_compressed = FSP_FLAGS_HAS_PAGE_COMPRESSION(flags);
@@ -3770,14 +3765,14 @@ fil_ibd_create(
 	}
 #endif
 
-	success = os_file_set_size(
+	if (!os_file_set_size(
 		path, file,
-		os_offset_t(size) << UNIV_PAGE_SIZE_SHIFT, is_compressed);
-
-	if (!success) {
+		os_offset_t(size) << UNIV_PAGE_SIZE_SHIFT, is_compressed)) {
+		*err = DB_OUT_OF_FILE_SPACE;
+err_exit:
 		os_file_close(file);
 		os_file_delete(innodb_data_file_key, path);
-		return(DB_OUT_OF_FILE_SPACE);
+		return NULL;
 	}
 
 	bool punch_hole = os_is_sparse_file_supported(file);
@@ -3810,7 +3805,7 @@ fil_ibd_create(
 
 		buf_flush_init_for_writing(NULL, page, NULL, 0);
 
-		err = os_file_write(
+		*err = os_file_write(
 			request, path, file, page, 0, page_size.physical());
 	} else {
 		page_zip_des_t	page_zip;
@@ -3824,43 +3819,33 @@ fil_ibd_create(
 
 		buf_flush_init_for_writing(NULL, page, &page_zip, 0);
 
-		err = os_file_write(
+		*err = os_file_write(
 			request, path, file, page_zip.data, 0,
 			page_size.physical());
 	}
 
 	ut_free(buf2);
 
-	if (err != DB_SUCCESS) {
-
+	if (*err != DB_SUCCESS) {
 		ib::error()
 			<< "Could not write the first page to"
 			<< " tablespace '" << path << "'";
-
-		os_file_close(file);
-		os_file_delete(innodb_data_file_key, path);
-
-		return(DB_ERROR);
+		goto err_exit;
 	}
 
-	success = os_file_flush(file);
-
-	if (!success) {
+	if (!os_file_flush(file)) {
 		ib::error() << "File flush of tablespace '"
 			<< path << "' failed";
-		os_file_close(file);
-		os_file_delete(innodb_data_file_key, path);
-		return(DB_ERROR);
+		*err = DB_ERROR;
+		goto err_exit;
 	}
 
 	if (has_data_dir) {
 		/* Make the ISL file if the IBD file is not
 		in the default location. */
-		err = RemoteDatafile::create_link_file(name, path);
-		if (err != DB_SUCCESS) {
-			os_file_close(file);
-			os_file_delete(innodb_data_file_key, path);
-			return(err);
+		*err = RemoteDatafile::create_link_file(name, path);
+		if (*err != DB_SUCCESS) {
+			goto err_exit;
 		}
 	}
 
@@ -3873,39 +3858,28 @@ fil_ibd_create(
 
 	space = fil_space_create(name, space_id, flags, FIL_TYPE_TABLESPACE,
 				 crypt_data, mode);
-
-	fil_node_t* node = NULL;
-
-	if (space) {
-		node = fil_node_create_low(path, size, space, false, true);
-	}
-
-	if (!space || !node) {
-		if (crypt_data) {
-			free(crypt_data);
-		}
-
-		err = DB_ERROR;
+	if (!space) {
+		free(crypt_data);
+		*err = DB_ERROR;
 	} else {
-		mtr_t			mtr;
-		const fil_node_t*	file = UT_LIST_GET_FIRST(space->chain);
-
+		fil_node_t* node = fil_node_create_low(path, size, space, false, true);
+		mtr_t mtr;
 		mtr.start();
 		fil_op_write_log(
-			MLOG_FILE_CREATE2, space_id, 0, file->name,
+			MLOG_FILE_CREATE2, space_id, 0, node->name,
 			NULL, space->flags & ~FSP_FLAGS_MEM_MASK, &mtr);
-		fil_name_write(space, 0, file, &mtr);
+		fil_name_write(space, 0, node, &mtr);
 		mtr.commit();
 
 		node->block_size = block_size;
 		space->punch_hole = punch_hole;
 
-		err = DB_SUCCESS;
+		*err = DB_SUCCESS;
 	}
 
 	os_file_close(file);
 
-	if (err != DB_SUCCESS) {
+	if (*err != DB_SUCCESS) {
 		if (has_data_dir) {
 			RemoteDatafile::delete_link_file(name);
 		}
@@ -3913,7 +3887,7 @@ fil_ibd_create(
 		os_file_delete(innodb_data_file_key, path);
 	}
 
-	return(err);
+	return space;
 }
 
 /** Try to open a single-table tablespace and optionally check that the
