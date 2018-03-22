@@ -4271,7 +4271,7 @@ innobase_add_instant_try(
 
 	mtr_t mtr;
 	mtr.start();
-	mtr.set_named_space(index->space);
+	index->set_modified(mtr);
 	btr_pcur_t pcur;
 	btr_pcur_open_at_index_side(true, index, BTR_MODIFY_TREE, &pcur, true,
 				    0, &mtr);
@@ -4344,7 +4344,7 @@ empty_table:
 	ut_ad(user_table->is_instant());
 	mtr.commit();
 	mtr.start();
-	mtr.set_named_space(index->space);
+	index->set_modified(mtr);
 	dberr_t err;
 	if (page_t* root = btr_root_get(index, &mtr)) {
 		switch (fil_page_get_type(root)) {
@@ -4368,7 +4368,7 @@ empty_table:
 		page_set_instant(root, index->n_core_fields, &mtr);
 		mtr.commit();
 		mtr.start();
-		mtr.set_named_space(index->space);
+		index->set_modified(mtr);
 		err = row_ins_clust_index_entry_low(
 			BTR_NO_LOCKING_FLAG, BTR_MODIFY_TREE, index,
 			index->n_uniq, entry, 0, thr, false);
