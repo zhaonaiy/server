@@ -2605,15 +2605,18 @@ create:
             create_table_set_open_action_and_adjust_tables(lex);
             Lex->pop_select(); //main select
           }
-        | create_or_replace opt_unique INDEX_SYM opt_if_not_exists ident
+        | create_or_replace opt_unique INDEX_SYM opt_if_not_exists
+          {
+            if (Lex->main_select_push())
+              MYSQL_YYABORT;
+          }
+          ident
           opt_key_algorithm_clause
           ON table_ident
           {
-            if (Lex->add_create_index_prepare($8))
+            if (Lex->add_create_index_prepare($9))
               MYSQL_YYABORT;
-            if (Lex->add_create_index($2, &$5, $6, $1 | $4))
-              MYSQL_YYABORT;
-            if (Lex->main_select_push())
+            if (Lex->add_create_index($2, &$6, $7, $1 | $4))
               MYSQL_YYABORT;
           }
           '(' key_list ')' opt_lock_wait_timeout normal_key_options
@@ -2621,14 +2624,17 @@ create:
           {
             Lex->pop_select(); //main select
           }
-        | create_or_replace fulltext INDEX_SYM opt_if_not_exists ident
+        | create_or_replace fulltext INDEX_SYM
+          {
+            if (Lex->main_select_push())
+              MYSQL_YYABORT;
+          }
+          opt_if_not_exists ident
           ON table_ident
           {
-            if (Lex->add_create_index_prepare($7))
+            if (Lex->add_create_index_prepare($8))
               MYSQL_YYABORT;
-            if (Lex->add_create_index($2, &$5, HA_KEY_ALG_UNDEF, $1 | $4))
-              MYSQL_YYABORT;
-            if (Lex->main_select_push())
+            if (Lex->add_create_index($2, &$6, HA_KEY_ALG_UNDEF, $1 | $5))
               MYSQL_YYABORT;
           }
           '(' key_list ')' opt_lock_wait_timeout fulltext_key_options
@@ -2636,14 +2642,17 @@ create:
           {
             Lex->pop_select(); //main select
           }
-        | create_or_replace spatial INDEX_SYM opt_if_not_exists ident
+        | create_or_replace spatial INDEX_SYM
+          {
+            if (Lex->main_select_push())
+              MYSQL_YYABORT;
+          }
+          opt_if_not_exists ident
           ON table_ident
           {
-            if (Lex->add_create_index_prepare($7))
+            if (Lex->add_create_index_prepare($8))
               MYSQL_YYABORT;
-            if (Lex->add_create_index($2, &$5, HA_KEY_ALG_UNDEF, $1 | $4))
-              MYSQL_YYABORT;
-            if (Lex->main_select_push())
+            if (Lex->add_create_index($2, &$6, HA_KEY_ALG_UNDEF, $1 | $5))
               MYSQL_YYABORT;
           }
           '(' key_list ')' opt_lock_wait_timeout spatial_key_options
