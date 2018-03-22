@@ -6904,18 +6904,6 @@ END	latin1	latin1_swedish_ci	latin1_swedish_ci
 
 DROP FUNCTION f1;
 
-drop procedure if exists p;
-set @old_mode= @@sql_mode;
-set @@sql_mode= cast(pow(2,32)-1 as unsigned integer);
-select @@sql_mode into @full_mode;
-create procedure p() as begin end;
-call p();
-set @@sql_mode= @old_mode;
-select replace(@full_mode, 'ALLOW_INVALID_DATES', 'INVALID_DATES') into @full_mode;
-select name from mysql.proc where name = 'p' and sql_mode = @full_mode;
-name
-p
-drop procedure p;
 CREATE DEFINER = 'root'@'localhost' PROCEDURE p1()
 NOT DETERMINISTIC
 CONTAINS SQL

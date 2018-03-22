@@ -3898,7 +3898,16 @@ sp_decl_idents:
 
 sp_opt_default:
           /* Empty */ { $$ = NULL; }
-        | DEFAULT expr { $$ = $2; }
+        | DEFAULT
+          {
+            if (Lex->main_select_push())
+              MYSQL_YYABORT;
+          }
+          expr
+          {
+            Lex->pop_select(); //main select
+            $$ = $3;
+          }
         ;
 
 /*
@@ -4046,6 +4055,8 @@ assignment_source_expr:
           {
             DBUG_ASSERT(thd->free_list == NULL);
             Lex->sphead->reset_lex(thd, $1);
+            if (Lex->main_select_push())
+              MYSQL_YYABORT;
           }
           expr
           {
@@ -4054,6 +4065,7 @@ assignment_source_expr:
             $$->sp_lex_in_use= true;
             $$->set_item_and_free_list($3, thd->free_list);
             thd->free_list= NULL;
+            Lex->pop_select(); //main select
             if ($$->sphead->restore_lex(thd))
               MYSQL_YYABORT;
           }
