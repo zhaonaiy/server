@@ -868,20 +868,17 @@ ulint
 fsp_header_get_tablespace_size(void)
 /*================================*/
 {
-	fsp_header_t*	header;
-	ulint		size;
-	mtr_t		mtr;
+	mtr_t	mtr;
 
-	mtr_start(&mtr);
+	mtr.start();
+	fil_space_t* space = fil_system->sys_space;
+	mtr_x_lock(&space->latch, &mtr);
 
-	fil_space_t*	space = mtr_x_lock_space(TRX_SYS_SPACE, &mtr);
-
-	header = fsp_get_space_header(space, univ_page_size, &mtr);
-
-	size = mach_read_from_4(header + FSP_SIZE);
+	ulint size = mach_read_from_4(fsp_get_space_header(space, univ_page_size,
+							   &mtr) + FSP_SIZE);
 	ut_ad(space->size_in_header == size);
 
-	mtr_commit(&mtr);
+	mtr.commit();
 
 	return(size);
 }

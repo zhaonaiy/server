@@ -1378,6 +1378,12 @@ fil_space_detach(
 
 		fil_node_close_to_free(fil_node, space);
 	}
+
+	if (space == fil_system->sys_space) {
+		fil_system->sys_space = NULL;
+	} else if (space == fil_system->temp_space) {
+		fil_system->temp_space = NULL;
+	}
 }
 
 /** Free a tablespace object on which fil_space_detach() was invoked.
@@ -5494,6 +5500,10 @@ struct	Check {
 		Check	check;
 		ut_list_validate(space->chain, check);
 		ut_a(space->size == check.size);
+		ut_ad(space->id != TRX_SYS_SPACE
+		      || space == fil_system->sys_space);
+		ut_ad(space->id != SRV_TMP_SPACE_ID
+		      || space == fil_system->temp_space);
 		return(check.n_open);
 	}
 };
@@ -5625,6 +5635,8 @@ fil_close(void)
 		ut_a(UT_LIST_GET_LEN(fil_system->LRU) == 0);
 		ut_a(UT_LIST_GET_LEN(fil_system->unflushed_spaces) == 0);
 		ut_a(UT_LIST_GET_LEN(fil_system->space_list) == 0);
+		ut_ad(!fil_system->sys_space);
+		ut_ad(!fil_system->temp_space);
 
 		mutex_free(&fil_system->mutex);
 

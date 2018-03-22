@@ -1191,7 +1191,8 @@ srv_open_tmp_tablespace(bool create_new_db)
 		mtr_t mtr;
 		mtr.start();
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-		fsp_header_init(mtr_x_lock_space(SRV_TMP_SPACE_ID, &mtr),
+		mtr_x_lock(&fil_system->temp_space->latch, &mtr);
+		fsp_header_init(fil_system->temp_space,
 				srv_tmp_space.get_sum_of_sizes(),
 				&mtr);
 		mtr.commit();
@@ -2108,7 +2109,7 @@ files_checked:
 	shutdown */
 
 	fil_open_log_and_system_tablespace_files();
-	ut_d(fil_space_get(0)->recv_size = srv_sys_space_size_debug);
+	ut_d(fil_system->sys_space->recv_size = srv_sys_space_size_debug);
 
 	err = srv_undo_tablespaces_init(create_new_db);
 
@@ -2133,12 +2134,12 @@ files_checked:
 		ut_a(!srv_read_only_mode);
 
 		mtr_start(&mtr);
-
-		fsp_header_init(mtr_x_lock_space(0, &mtr), sum_of_new_sizes,
-				&mtr);
-
+		fil_space_t* space = fil_system->sys_space;
+		ut_ad(space->id == 0);
 		compile_time_assert(TRX_SYS_SPACE == 0);
 		compile_time_assert(IBUF_SPACE_ID == 0);
+		mtr_x_lock(&space->latch, &mtr);
+		fsp_header_init(space, sum_of_new_sizes, &mtr);
 
 		ulint ibuf_root = btr_create(
 			DICT_CLUSTERED | DICT_IBUF,
@@ -2421,7 +2422,6 @@ files_checked:
 			mtr_t		mtr;
 			buf_block_t*	block;
 			mtr.start();
-			mtr.set_sys_modified();
 			/* Bitmap page types will be reset in
 			buf_dblwr_check_block() without redo logging. */
 			block = buf_page_get(

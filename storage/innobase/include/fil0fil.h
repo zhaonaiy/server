@@ -487,6 +487,8 @@ data space) is stored here; below we talk about tablespaces, but also
 the ib_logfiles form a 'space' and it is handled here */
 struct fil_system_t {
 	ib_mutex_t	mutex;		/*!< The mutex protecting the cache */
+	fil_space_t*	sys_space;	/*!< The innodb_system tablespace */
+	fil_space_t*	temp_space;	/*!< The innodb_temporary tablespace */
 	hash_table_t*	spaces;		/*!< The hash table of spaces in the
 					system; they are hashed on the space
 					id */
