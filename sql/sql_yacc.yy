@@ -1869,13 +1869,16 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 
 %type <unit_operation> unit_type_decl
 
-%type <select_lock> opt_select_lock_type select_lock_type opt_lock_wait_timeout_new
+%type <select_lock> 
+        opt_select_lock_type
+        select_lock_type
+        opt_lock_wait_timeout_new
 
 %type <select_limit> opt_limit_clause limit_clause limit_options
 
 %type <order_limit_lock>
-        order_or_limit order_limit_lock_clauses
-        opt_order_limit_lock_clauses
+        query_expression_tail
+        order_or_limit
 
 %type <select_order> opt_order_clause order_clause order_list
 
@@ -8705,6 +8708,7 @@ select_new:
           query_expression
           {
             Lex->selects_allow_into= TRUE;
+            Lex->selects_allow_procedure= TRUE;
             Lex->set_main_unit($1);
             if (Lex->check_main_unit_semantics())
               MYSQL_YYABORT;
@@ -8718,10 +8722,6 @@ select_new:
             }
             else
               Lex->push_select(Lex->first_select_lex());
-          }
-          select_new_global_tail
-          {
-            Lex->pop_select();
             Lex->sql_command= SQLCOM_SELECT;
           }
         ;
@@ -8782,7 +8782,7 @@ query_primary_parens:
             }
             Lex->push_select($2->fake_select_lex);
           }
-          opt_order_limit_lock_clauses ')'
+          query_expression_tail ')'
           {
             Lex->pop_select();
             if ($4)
@@ -8795,26 +8795,43 @@ query_primary_parens:
           {
             Lex->push_select($2);
           }
-          opt_order_limit_lock_clauses ')'
+          query_expression_tail ')'
           {
             Lex->pop_select();
             $$= $2;
             $$->braces= TRUE;
             if ($4)
             {
-              if (!$2->is_set_order_or_limit_or_lock)
+              if ($2->next_select())
+              {
+                SELECT_LEX_UNIT *unit= $2->master_unit();
+                if (!unit)
+                  unit= Lex->create_unit($2);
+                if (!unit)
+                  YYABORT;
+                if (!unit->fake_select_lex->is_set_query_expr_tail)
+                  $4->set_to(unit->fake_select_lex);
+                else
+                {
+                  $$= Lex->wrap_unit_into_derived(unit);
+                  if (!$$)
+                    YYABORT;
+                  $4->set_to($$);
+                }
+              }
+              else if (!$2->is_set_query_expr_tail)
+              {
                 $4->set_to($2);
+              }
               else
               {
                 SELECT_LEX_UNIT *unit= Lex->create_unit($2);
                 if (!unit)
                   YYABORT;
-                if (unit->add_fake_select_lex(thd))
-                  YYABORT;
-                $4->set_to(unit->fake_select_lex);
                 $$= Lex->wrap_unit_into_derived(unit);
                 if (!$$)
                   YYABORT;
+                $4->set_to($$);
               }
             }
           }
@@ -8891,25 +8908,18 @@ query_expression_unit:
           }
         ;
 
-opt_order_limit_lock_clauses:
-          /* empty */
-          { $$= NULL; }
-        | order_limit_lock_clauses
-          { $$= $1; }
-        ;
-
 query_expression_body:
           query_primary
           {
             Lex->push_select($1);
           }
-          opt_order_limit_lock_clauses
+          query_expression_tail
           {
             Lex->pop_select();
             SELECT_LEX *sel= $1;
             if ($3)
             {
-              if (!$1->is_set_order_or_limit_or_lock)
+              if (!$1->is_set_query_expr_tail)
                 $3->set_to($1);
               else
               {
@@ -8940,7 +8950,7 @@ query_expression_body:
             }
             Lex->push_select($1->fake_select_lex);
           }
-          opt_order_limit_lock_clauses
+          query_expression_tail
           {
             Lex->pop_select();
             if ($3)
@@ -8985,25 +8995,6 @@ subselect:
             }
 
             $$= $2->first_select();
-          }
-        ;
-
-
-
-select_new_global_tail:
-          /* empty */
-        | procedure_clause
-        | into
-        | into order_limit_lock_clauses
-          {
-            if ($2)
-            {
-              if(Lex->select_stack_head()->master_unit()->fake_select_lex)
-              $2->set_to(Lex->select_stack_head()->master_unit()->
-                         fake_select_lex);
-            else
-              $2->set_to(Lex->select_stack_head());
-            }
           }
         ;
 
@@ -12074,7 +12065,6 @@ opt_limit_clause:
           { $$= $1; }
         ;
 
-
 limit_clause:
           LIMIT limit_options
           {
@@ -12188,6 +12178,43 @@ delete_limit_clause:
        | LIMIT limit_option ROWS_SYM EXAMINED_SYM { thd->parse_error(); MYSQL_YYABORT; }
         ;
 
+query_expression_tail:
+          /* empty */ { $$= NULL; }
+        | order_or_limit opt_select_lock_type
+          {
+            $$= $1;
+            $$->lock= $2;
+          }
+        | order_or_limit procedure_or_into opt_select_lock_type
+          {
+            $$= $1;
+            $$->lock= $3;
+          }
+        | procedure_or_into opt_select_lock_type
+          {
+            $$= new(thd->mem_root) Lex_order_limit_lock;
+            if (!$$)
+              YYABORT;
+            $$->order_list= NULL;
+            $$->limit.empty();
+            $$->lock= $2;
+          }
+        | select_lock_type
+          {
+            $$= new(thd->mem_root) Lex_order_limit_lock;
+            if (!$$)
+              YYABORT;
+            $$->order_list= NULL;
+            $$->limit.empty();
+            $$->lock= $1;
+          }
+        ;
+
+procedure_or_into:
+          procedure_clause
+        | into
+        | procedure_clause into
+        ;
 
 order_or_limit:
           order_clause opt_limit_clause
@@ -12210,34 +12237,6 @@ order_or_limit:
           }
         ;
 
-order_limit_lock_clauses:
-          order_or_limit opt_select_lock_type
-          {
-            if ($1)
-            {
-              $$= $1;
-              $$->lock= $2;
-            }
-            else if ($2.defined_lock)
-            {
-              $$= new(thd->mem_root) Lex_order_limit_lock;
-              if (!$$)
-                YYABORT;
-              $$->lock= $2;
-            }
-            else
-              $$= NULL;
-          }
-        | select_lock_type
-          {
-            $$= new(thd->mem_root) Lex_order_limit_lock;
-            if (!$$)
-              YYABORT;
-            $$->order_list= NULL;
-            $$->limit.empty();
-            $$->lock= $1;
-          }
-        ;
 
 opt_plus:
           /* empty */
@@ -12308,7 +12307,6 @@ bool:
         | TRUE_SYM  { $$= 1; }
         | FALSE_SYM { $$= 0; }
 
-
 procedure_clause:
           PROCEDURE_SYM ident /* Procedure name */
           {
@@ -12335,6 +12333,7 @@ procedure_clause:
               parameters are reduced.
             */
             Lex->expr_allows_subselect= false;
+            Select->options|= OPTION_PROCEDURE_CLAUSE;
           }
           '(' procedure_list ')'
           {
@@ -12427,7 +12426,15 @@ opt_into:
         ;
 into:
           INTO into_destination
-          { Select->options|= OPTION_INTO_CLAUSE; }
+          {
+            if (!(Select->options & OPTION_INTO_CLAUSE))
+              Select->options|= OPTION_INTO_CLAUSE;
+            else
+            {
+              my_error(ER_CANT_USE_OPTION_HERE, MYF(0), "INTO");
+              MYSQL_YYABORT;
+            }
+          }
         ;
 
 into_destination:

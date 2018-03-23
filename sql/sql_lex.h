@@ -956,7 +956,7 @@ public:
   SQL_I_List<ORDER> order_list;   /* ORDER clause */
   SQL_I_List<ORDER> gorder_list;
   Item *select_limit, *offset_limit;  /* LIMIT clause parameters */
-  bool is_set_order_or_limit_or_lock;
+  bool is_set_query_expr_tail;
 
   /// Array of pointers to top elements of all_fields list
   Ref_ptr_array ref_pointer_array;
@@ -2868,6 +2868,7 @@ public:
   */
   bool expr_allows_subselect;
   bool selects_allow_into;
+  bool selects_allow_procedure;
   /*
     A special command "PARSE_VCOL_EXPR" is defined for the parser 
     to translate a defining expression of a virtual column into an 

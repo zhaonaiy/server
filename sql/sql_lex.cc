@@ -745,6 +745,7 @@ void LEX::start(THD *thd_arg)
   reset_query_tables_list(FALSE);
   expr_allows_subselect= TRUE;
   selects_allow_into= FALSE;
+  selects_allow_procedure= FALSE;
   use_only_table_context= FALSE;
   parse_vcol_expr= FALSE;
   check_exists= FALSE;
@@ -2279,7 +2280,7 @@ void st_select_lex::init_select()
   /* Set limit and offset to default values */
   select_limit= 0;      /* denotes the default limit = HA_POS_ERROR */
   offset_limit= 0;      /* denotes the default offset = 0 */
-  is_set_order_or_limit_or_lock= false;
+  is_set_query_expr_tail= false;
   with_sum_func= 0;
   is_correlated= 0;
   cur_pos_in_select_list= UNDEF_POS;
@@ -7501,6 +7502,23 @@ bool st_select_lex::check_parameters(SELECT_LEX *main_select)
     DBUG_RETURN(TRUE);
   }
 
+  if (options & OPTION_PROCEDURE_CLAUSE)
+  {
+    if (!parent_lex->selects_allow_procedure ||
+        next_select() != NULL ||
+        this != master_unit()->first_select() ||
+        nest_level != 1)
+    {
+      my_error(ER_CANT_USE_OPTION_HERE, MYF(0), "PROCEDURE");
+      DBUG_RETURN(TRUE);
+    }
+    if (options & OPTION_INTO_CLAUSE)
+    {
+      my_error(ER_CANT_USE_OPTION_HERE, MYF(0), "INTO");
+      DBUG_RETURN(TRUE);
+    }
+  }
+
   if ((options & SELECT_HIGH_PRIORITY) && this != main_select)
   {
     my_error(ER_CANT_USE_OPTION_HERE, MYF(0), "HIGH_PRIORITY");
@@ -7573,7 +7591,7 @@ bool st_select_lex_unit::check_parameters(SELECT_LEX *main_select)
     if (sl->check_parameters(main_select))
       return TRUE;
   }
-  return FALSE;
+  return fake_select_lex && fake_select_lex->check_parameters(main_select);
 }
 
 
@@ -7788,7 +7806,7 @@ void st_select_lex::register_unit(SELECT_LEX_UNIT *unit,
 
   for(SELECT_LEX *sel= unit->first_select();sel; sel= sel->next_select())
   {
-    sel->context.outer_context= &context;
+    sel->context.outer_context= outer_context;
   }
 }
 
@@ -7881,7 +7899,7 @@ bool Lex_order_limit_lock::set_to(SELECT_LEX *sel)
     }
     sel->order_list= *(order_list);
   }
-  sel->is_set_order_or_limit_or_lock= true;
+  sel->is_set_query_expr_tail= true;
   return FALSE;
 }
 
