@@ -512,7 +512,6 @@ dict_create_sys_indexes_tuple(
 					tuple is allocated */
 {
 	dict_table_t*	sys_indexes;
-	dict_table_t*	table;
 	dtuple_t*	entry;
 	dfield_t*	dfield;
 	byte*		ptr;
@@ -522,8 +521,6 @@ dict_create_sys_indexes_tuple(
 	ut_ad(heap);
 
 	sys_indexes = dict_sys->sys_indexes;
-
-	table = dict_table_get_low(index->table_name);
 
 	entry = dtuple_create(
 		heap, DICT_NUM_COLS__SYS_INDEXES + DATA_N_SYS_COLS);
@@ -535,7 +532,7 @@ dict_create_sys_indexes_tuple(
 		entry, DICT_COL__SYS_INDEXES__TABLE_ID);
 
 	ptr = static_cast<byte*>(mem_heap_alloc(heap, 8));
-	mach_write_to_8(ptr, table->id);
+	mach_write_to_8(ptr, index->table->id);
 
 	dfield_set_data(dfield, ptr, 8);
 
@@ -589,7 +586,7 @@ dict_create_sys_indexes_tuple(
 		entry, DICT_COL__SYS_INDEXES__SPACE);
 
 	ptr = static_cast<byte*>(mem_heap_alloc(heap, 4));
-	mach_write_to_4(ptr, table->space);
+	mach_write_to_4(ptr, index->table->space);
 
 	dfield_set_data(dfield, ptr, 4);
 
@@ -757,7 +754,8 @@ dict_build_index_def_step(
 
 	index = node->index;
 
-	table = dict_table_get_low(index->table_name);
+	table = index->table = node->table = dict_table_open_on_name(
+		node->table_name, TRUE, FALSE, DICT_ERR_IGNORE_NONE);
 
 	if (table == NULL) {
 		return(DB_TABLE_NOT_FOUND);
@@ -767,8 +765,6 @@ dict_build_index_def_step(
 		/* Record only the first table id. */
 		trx->table_id = table->id;
 	}
-
-	node->table = table;
 
 	ut_ad((UT_LIST_GET_LEN(table->indexes) > 0)
 	      || dict_index_is_clust(index));
@@ -788,6 +784,7 @@ dict_build_index_def_step(
 	index->trx_id = trx->id;
 	ut_ad(table->def_trx_id <= trx->id);
 	table->def_trx_id = trx->id;
+	dict_table_close(table, true, false);
 
 	return(DB_SUCCESS);
 }
@@ -1251,6 +1248,7 @@ tab_create_graph_create(
 
 /** Creates an index create graph.
 @param[in]	index	index to create, built as a memory data structure
+@param[in]	table	table name
 @param[in,out]	heap	heap where created
 @param[in]	add_v	new virtual columns added in the same clause with
 			add index
@@ -1258,6 +1256,7 @@ tab_create_graph_create(
 ind_node_t*
 ind_create_graph_create(
 	dict_index_t*		index,
+	const char*		table,
 	mem_heap_t*		heap,
 	const dict_add_v_col_t*	add_v)
 {
@@ -1269,6 +1268,8 @@ ind_create_graph_create(
 	node->common.type = QUE_NODE_CREATE_INDEX;
 
 	node->index = index;
+
+	node->table_name = table;
 
 	node->add_v = add_v;
 
@@ -1488,18 +1489,14 @@ dict_create_index_step(
 	}
 
 	if (node->state == INDEX_ADD_TO_CACHE) {
+		ut_ad(node->index->table == node->table);
+		node->index = dict_index_add_to_cache(
+			node->index, FIL_NULL, trx_is_strict(trx),
+			&err, node->add_v);
 
-		index_id_t	index_id = node->index->id;
+		ut_ad((node->index == NULL) == (err != DB_SUCCESS));
 
-		err = dict_index_add_to_cache_w_vcol(
-			node->table, node->index, node->add_v, FIL_NULL,
-			trx_is_strict(trx));
-
-		node->index = dict_index_get_if_in_cache_low(index_id);
-		ut_a((node->index == NULL) == (err != DB_SUCCESS));
-
-		if (err != DB_SUCCESS) {
-
+		if (!node->index) {
 			goto function_exit;
 		}
 
