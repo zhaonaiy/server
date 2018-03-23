@@ -58,6 +58,27 @@ const char table_name_t::part_suffix[4]
 = "#P#";
 #endif
 
+static bool dict_mem_table_is_system(const char *name)
+{
+	/* table has the following format: database/table
+	and some system table are of the form SYS_* */
+	if (strchr(name, '/')) {
+		size_t table_len = strlen(name);
+		const char *system_db;
+		int i = 0;
+		while ((system_db = innobase_system_databases[i++])
+			&& (system_db != NullS)) {
+			size_t len = strlen(system_db);
+			if (table_len > len && !strncmp(name, system_db, len)) {
+				return true;
+			}
+		}
+		return false;
+	} else {
+		return true;
+	}
+}
+
 /** An interger randomly initialized at startup used to make a temporary
 table name as unuique as possible. */
 static ib_uint32_t	dict_temp_file_num;
@@ -1161,35 +1182,6 @@ operator<< (std::ostream& out, const dict_foreign_set& fk_set)
 	std::for_each(fk_set.begin(), fk_set.end(), dict_foreign_print(out));
 	out << "]" << std::endl;
 	return(out);
-}
-
-/****************************************************************//**
-Determines if a table belongs to a system database
-@return */
-bool
-dict_mem_table_is_system(
-/*================*/
-	char	*name)		/*!< in: table name */
-{
-	ut_ad(name);
-
-	/* table has the following format: database/table
-	and some system table are of the form SYS_* */
-	if (strchr(name, '/')) {
-		size_t table_len = strlen(name);
-		const char *system_db;
-		int i = 0;
-		while ((system_db = innobase_system_databases[i++])
-			&& (system_db != NullS)) {
-			size_t len = strlen(system_db);
-			if (table_len > len && !strncmp(name, system_db, len)) {
-				return true;
-			}
-		}
-		return false;
-	} else {
-		return true;
-	}
 }
 
 /** Adjust clustered index metadata for instant ADD COLUMN.
