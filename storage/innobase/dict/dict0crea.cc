@@ -1080,13 +1080,13 @@ dict_recreate_index_tree(
 
 	ut_a(table->space == mtr_read_ulint(ptr, MLOG_4BYTES, mtr));
 
-	mutex_enter(&fil_system->mutex);
+	mutex_enter(&fil_system.mutex);
 	fil_space_t* space = fil_space_get_by_id(table->space);
 	/* TRUNCATE TABLE is protected by an exclusive table lock.
 	The table cannot be dropped or the tablespace discarded
 	while we are holding the transactional table lock. Thus,
 	there is no need to invoke fil_space_acquire(). */
-	mutex_exit(&fil_system->mutex);
+	mutex_exit(&fil_system.mutex);
 
 	if (!space) {
 		/* It is a single table tablespae and the .ibd file is

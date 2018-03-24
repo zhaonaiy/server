@@ -524,7 +524,7 @@ ibuf_init_at_db_start(void)
 
 	compile_time_assert(IBUF_SPACE_ID == TRX_SYS_SPACE);
 	compile_time_assert(IBUF_SPACE_ID == 0);
-	mtr_x_lock(&fil_system->sys_space->latch, &mtr);
+	mtr_x_lock(&fil_system.sys_space->latch, &mtr);
 
 	mutex_enter(&ibuf_mutex);
 
@@ -2029,7 +2029,7 @@ ibuf_add_free_page(void)
 	mtr_start(&mtr);
 	/* Acquire the fsp latch before the ibuf header, obeying the latching
 	order */
-	mtr_x_lock(&fil_system->sys_space->latch, &mtr);
+	mtr_x_lock(&fil_system.sys_space->latch, &mtr);
 	header_page = ibuf_header_page_get(&mtr);
 
 	/* Allocate a new page: NOTE that if the page has been a part of a
@@ -2108,7 +2108,7 @@ ibuf_remove_free_page(void)
 	/* Acquire the fsp latch before the ibuf header, obeying the latching
 	order */
 
-	mtr_x_lock(&fil_system->sys_space->latch, &mtr);
+	mtr_x_lock(&fil_system.sys_space->latch, &mtr);
 	header_page = ibuf_header_page_get(&mtr);
 
 	/* Prevent pessimistic inserts to insert buffer trees for a while */

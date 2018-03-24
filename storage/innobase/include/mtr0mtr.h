@@ -313,7 +313,7 @@ struct mtr_t {
 		ut_ad(!m_impl.m_user_space_id);
 		ut_d(m_impl.m_user_space_id = space_id);
 		if (!space_id) {
-			return fil_system->sys_space;
+			return fil_system.sys_space;
 		} else {
 			ut_ad(m_impl.m_user_space_id == space_id);
 			ut_ad(!m_impl.m_user_space);

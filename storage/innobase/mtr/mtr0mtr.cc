@@ -669,7 +669,7 @@ mtr_t::x_lock_space(ulint space_id, const char* file, unsigned line)
 	ut_ad(is_active());
 
 	if (space_id == TRX_SYS_SPACE) {
-		space = fil_system->sys_space;
+		space = fil_system.sys_space;
 	} else if ((space = m_impl.m_user_space) && space_id == space->id) {
 	} else {
 		space = fil_space_get(space_id);
@@ -933,7 +933,7 @@ mtr_t::release_free_extents(ulint n_reserved)
 		      == m_impl.m_user_space_id);
 		space = m_impl.m_user_space;
 	} else {
-		space = fil_system->sys_space;
+		space = fil_system.sys_space;
 	}
 
 	ut_ad(memo_contains(get_memo(), &space->latch, MTR_MEMO_X_LOCK));

@@ -640,7 +640,7 @@ trx_temp_rseg_create()
 	for (ulong i = 0; i < TRX_SYS_N_RSEGS; i++) {
 		mtr.start();
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-		fil_space_t* space = fil_system->temp_space;
+		fil_space_t* space = fil_system.temp_space;
 		ut_ad(space->purpose == FIL_TYPE_TEMPORARY);
 		mtr_x_lock(&space->latch, &mtr);
 

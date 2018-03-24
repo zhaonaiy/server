@@ -1191,8 +1191,8 @@ srv_open_tmp_tablespace(bool create_new_db)
 		mtr_t mtr;
 		mtr.start();
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-		mtr_x_lock(&fil_system->temp_space->latch, &mtr);
-		fsp_header_init(fil_system->temp_space,
+		mtr_x_lock(&fil_system.temp_space->latch, &mtr);
+		fsp_header_init(fil_system.temp_space,
 				srv_tmp_space.get_sum_of_sizes(),
 				&mtr);
 		mtr.commit();
@@ -1785,7 +1785,7 @@ innobase_start_or_create_for_mysql()
 		return(srv_init_abort(DB_ERROR));
 	}
 
-	fil_init(srv_file_per_table ? 50000 : 5000, srv_max_n_open_files);
+	fil_system.create(srv_file_per_table ? 50000 : 5000);
 
 	double	size;
 	char	unit;
@@ -1836,7 +1836,6 @@ innobase_start_or_create_for_mysql()
 	}
 #endif /* UNIV_DEBUG */
 
-	fsp_init();
 	log_sys_init();
 
 	recv_sys_init();
@@ -2109,7 +2108,7 @@ files_checked:
 	shutdown */
 
 	fil_open_log_and_system_tablespace_files();
-	ut_d(fil_system->sys_space->recv_size = srv_sys_space_size_debug);
+	ut_d(fil_system.sys_space->recv_size = srv_sys_space_size_debug);
 
 	err = srv_undo_tablespaces_init(create_new_db);
 
@@ -2134,7 +2133,7 @@ files_checked:
 		ut_a(!srv_read_only_mode);
 
 		mtr_start(&mtr);
-		fil_space_t* space = fil_system->sys_space;
+		fil_space_t* space = fil_system.sys_space;
 		ut_ad(space->id == 0);
 		compile_time_assert(TRX_SYS_SPACE == 0);
 		compile_time_assert(IBUF_SPACE_ID == 0);
@@ -2888,7 +2887,7 @@ innodb_shutdown()
 	os_aio_free();
 	row_mysql_close();
 	srv_free();
-	fil_close();
+	fil_system.close();
 
 	/* 4. Free all allocated memory */
 
