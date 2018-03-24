@@ -936,7 +936,7 @@ fsp_try_extend_data_file(fil_space_t* space, fsp_header_t* header, mtr_t* mtr)
 
 	ut_d(fsp_space_modify_check(space, mtr));
 
-	if (space->id == srv_sys_space.space_id()
+	if (space->id == TRX_SYS_SPACE
 	    && !srv_sys_space.can_auto_extend_last_file()) {
 
 		/* We print the error message only once to avoid
@@ -950,7 +950,7 @@ fsp_try_extend_data_file(fil_space_t* space, fsp_header_t* header, mtr_t* mtr)
 			srv_sys_space.set_tablespace_full_status(true);
 		}
 		return(0);
-	} else if (fsp_is_system_temporary(space->id)
+	} else if (space->id == SRV_TMP_SPACE_ID
 		   && !srv_tmp_space.can_auto_extend_last_file()) {
 
 		/* We print the error message only once to avoid
