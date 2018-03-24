@@ -8731,6 +8731,10 @@ query_specification:
           SELECT_SYM
           {
             SELECT_LEX *sel;
+            LEX *lex= Lex;
+            if (lex->current_select &&
+                lex->current_select->parsing_place == BEFORE_OPT_FIELD_LIST)
+              lex->current_select->parsing_place= NO_MATTER;
             if (!(sel= Lex->alloc_select(TRUE)) ||
                   Lex->push_select(sel))
               MYSQL_YYABORT;

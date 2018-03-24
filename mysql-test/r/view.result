@@ -924,7 +924,7 @@ create view v1 as select 5 into outfile 'ttt';
 ERROR 42000: Incorrect usage/placement of 'INTO'
 create table t1 (a int);
 create view v1 as select a from t1 procedure analyse();
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'procedure analyse()' at line 1
+ERROR 42000: Incorrect usage/placement of 'PROCEDURE'
 create view v1 as select 1 from (select 1) as d1;
 drop view v1;
 drop table t1;
@@ -3223,7 +3223,7 @@ DROP TABLE t1;
 DROP VIEW IF EXISTS v1;
 SELECT * FROM (SELECT 1) AS t into @w;
 CREATE VIEW v1 AS SELECT * FROM (SELECT 1) AS t into @w;
-ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'into @w' at line 1
+ERROR 42000: Incorrect usage/placement of 'INTO'
 # Previously the following would fail.
 SELECT * FROM (SELECT 1) AS t into @w;
 drop view if exists view_24532_a;

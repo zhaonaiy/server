@@ -837,7 +837,7 @@ create view v1 as select 5 into @w;
 -- error ER_CANT_USE_OPTION_HERE
 create view v1 as select 5 into outfile 'ttt';
 create table t1 (a int);
--- error ER_PARSE_ERROR
+-- error ER_CANT_USE_OPTION_HERE
 create view v1 as select a from t1 procedure analyse();
 # now derived tables are allowed
 create view v1 as select 1 from (select 1) as d1;
@@ -3178,7 +3178,7 @@ DROP VIEW IF EXISTS v1;
 let $query = SELECT * FROM (SELECT 1) AS t into @w;
 
 eval $query;
---error ER_PARSE_ERROR
+--error ER_CANT_USE_OPTION_HERE
 eval CREATE VIEW v1 AS $query;
 --echo # Previously the following would fail.
 eval $query;
